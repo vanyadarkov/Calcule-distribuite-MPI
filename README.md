@@ -1,92 +1,68 @@
-# tema3
+# Calcule colaborative in sisteme distribuite OpenMPI
+## Descriere
+Acesta este un program distribuit in MPI in care procesele sunt grupate intr-o topologie formata din patru clustere, fiecare din acestea avand cate un coordonator si cate un numar arbitrar de procese worker. Procesele worker dintr-un cluster pot sa comunice doar cu coordonatorul lor, iar cei patru coordonatori pot sa comunice intre ei intr-o topologie de tip inel pentru a conecta clusterele.
 
+Scopul este ca toate procesele worker sa ajunga sa lucreze impreuna, cu ajutorul coordonatorilor, pentru rezolvarea unor task-uri computationale. Acest lucru se va realiza prin stabilirea topologiei si diseminarea ei catre toate procesele, si apoi prin impartirea calculelor in mod cat mai echilibrat intre workeri.
+### Stabilirea topologiei
 
+Sistemul distribuit implementat este format din patru clustere cu cate un numar arbitrar de procese worker, asa cum se poate observa in exemplul din figura de mai jos. Fiecare proces cunoaste faptul ca sunt patru clustere inca de la inceputul rularii programului.
 
-## Getting started
+![](md_pics/topology.png)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
+Coordonatorii sunt procesele cu rangurile 0, 1, 2, 3 (acest lucru fiind cunoscut din start de catre toti coordonatorii). Fiecare coordonator este responsabil de propriile sale procese worker, asa cum se poate observa in figura de mai sus (unde fiecare linie dintre doua procese reprezinta un canal de comunicatie).
+La inceputul executiei programului distribuit, procesele coordonator vor citi informatii despre procesele din clusterele lor din patru fisiere de intrare (cate unul pentru fiecare coordonator), numite cluster0.txt, cluster1.txt, cluster2.txt si cluster3.txt. Pentru topologia prezentata in figura de mai sus, cele patru fisiere de intrare vor arata astfel:
 ```
-cd existing_repo
-git remote add origin https://gitlab.cs.pub.ro/apd/tema3.git
-git branch -M main
-git push -uf origin main
+$ cat cluster0.txt 
+1 
+4 
+$ cat cluster1.txt 
+2 
+5
+9 
+$ cat cluster2.txt 
+2 
+6 
+7 
+$ cat cluster3.txt 
+3 
+8 
+10 
+11
 ```
+In exemplele de mai sus, prima linie reprezinta numarul de procese worker dintr-un cluster, iar urmatoarele linii contin rangurile workerilor.
+Fiecare mesaj trimis trebuie logat in urmatorul format ``` M(sursa, destinatia)```.
+Coordonatorii le comunica workerilor de care sunt responsabili rangul lor. 
+Fiecare proces din topologie trebuie sa cunoasca topologia completa, de aceea coordonatorii trebuie sa comunice intre ei ca sa completeze topologia ca dupa sa o distribuie.
+In momentul in care un proces are topologia finala, va trebui sa o afiseze in terminal, de exemplu, procesul 1 afiseaza topologia (care e cea din exemplul de mai sus):
+```1 -> 0:4 1:5,9 2:6,7 3:8,10,11```
 
-## Integrate with your tools
+### Realizarea calculelor
+Odata ce toate procesele cunosc topologia, urmeaza partea de calcule, care este coordonata de catre procesul 0. Mai concret, procesul 0 va genera un vector V de dimensiune N (unde N este primit ca parametru la rularea programului si este initial cunoscut doar de catre procesul 0), unde V[K] = N - K - 1 (cu K intre 0 si N - 1), care trebuie inmultit cu 5 element cu element. Inmultirea cu 5 a elementelor vectorului este realizata doar de catre procesele worker, deci procesele coordonator vor imparti calculele in mod cat mai echilibrat la procesele worker.
+Odata ce procesul 0 genereaza vectorul, va distribui mai departe calculele catre clusterul sau si catre celelalte trei clustere, prin intermediul coordonatorilor. Cand calculele sunt finalizate, vectorul rezultat trebuie reasamblat la procesul 0 si afisat de catre acesta. Un exemplu de afisare poate fi observat mai jos, pentru un vector de dimensiune 12:
+```Rezultat: 55 50 45 40 35 30 25 20 15 10 5 0```
+### Defecte de comunicatie
+Programul trebuie sa functioneze si in cazul existentei unui defect de comunicatiei (unde in cazul acestui program, poate exista doar intre procesele 0 si 1). Mai precis, legatura dintre cele doua procese dispare, asa cum se poate observa in imaginea de mai jos (unde avem aceeasi structura a sistemului distribuit prezentata anterior).
 
-- [ ] [Set up project integrations](https://gitlab.cs.pub.ro/apd/tema3/-/settings/integrations)
+![](md_pics/channel_defect.png)
 
-## Collaborate with your team
+### Partitionare
+Programul deasemenea, trateaza si un caz de partitionare a unui cluster. Mai precis, procesul 1 ajunge sa fie deconectat de procesele 0 si 2, deci el nu mai poate fi accesat din orice alt coordonator. Astfel, avem o partitionare a sistemului, ceea ce inseamna ca procesul 1 si workerii sai nu mai pot fi utilizati in realizarea calculelor, asa cum se poate observa in imaginea de mai jos (unde avem aceeasi structura a sistemului distribuit prezentata anterior).
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+![](md_pics/partitioning.png)
 
-## Test and Deploy
+Astfel, un proces din partitia mare va afisa topologia pe care o cunoaste in cadrul partitiei sale:
+```4 -> 0:4 2:6,7 3:8,10,11```
+Un proces din partitia mica va afisa urmatorul mesaj:
+```5 -> 1:5,9```
 
-Use the built-in continuous integration in GitLab.
+## Executie si build
+- Fisierele de intrare pentru fiecare clustere (coordonatori) trebuie sa fie in radacina cu fisierul executabil
+- Build se face cu ```$ make```
+- Rulare: ```$ mpirun --oversubscribe -np <numar_procese> ./tema3 <dimensiune_vector> <eroare_de_comunicatie>```
+- Al doilea parametru dat la rulare va fi 0 daca legatura dintre procesele 0 si 1 exista (nu are loc o eroare pe canalul de comunicati), 1 daca procesele 0 si 1 nu pot comunica direct, sau 2 daca are loc o partitie si coordonatorul 1 este izolat.
+**Atentie!** Se presupune ca datele de intrare sunt intotdeauna corecte.
+- Sunt disponibile niste teste, in directorul tests
+- Pentru a rula checkerul pentru testele propuse se poate folosi ```$ ./checker.sh``` din directorul checker
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+## Copyright
+Drepturile asupra enuntului temei, testelor propuse si checker-ului apartin echipei APD, facultatea ACS, UPB 2022-2023.
