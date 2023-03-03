@@ -1,4 +1,5 @@
 # Calcule colaborative in sisteme distribuite OpenMPI
+Responsabili: Elena Apostol, Radu-Ioan Ciobanu
 ## Descriere
 Acesta este un program distribuit in MPI in care procesele sunt grupate intr-o topologie formata din patru clustere, fiecare din acestea avand cate un coordonator si cate un numar arbitrar de procese worker. Procesele worker dintr-un cluster pot sa comunice doar cu coordonatorul lor, iar cei patru coordonatori pot sa comunice intre ei intr-o topologie de tip inel pentru a conecta clusterele.
 
